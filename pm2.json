@@ -1,0 +1,40 @@
+{
+  "apps": [
+    {
+      "name": "contact-api",
+      "script": "pnpm",
+      "args": "start",
+      "log_date_format": "YYYY-MM-DD HH:mm Z",
+      "error_file": "./logs/api-err.log",
+      "out_file": "./logs/api-out.log",
+      "merge_logs": true,
+      "log_type": "json",
+      "max_size": "10M",
+      "retain": 30
+    },
+    {
+      "name": "contact-cron",
+      "script": "pnpm",
+      "args": "cron",
+      "log_date_format": "YYYY-MM-DD HH:mm Z",
+      "error_file": "./logs/cron-err.log",
+      "out_file": "./logs/cron-out.log",
+      "merge_logs": true,
+      "log_type": "json",
+      "max_size": "10M",
+      "retain": 30
+    },
+    {
+      "name": "contact-worker",
+      "script": "pnpm",
+      "args": "worker",
+      "log_date_format": "YYYY-MM-DD HH:mm Z",
+      "error_file": "./logs/worker-err.log",
+      "out_file": "./logs/worker-out.log",
+      "merge_logs": true,
+      "log_type": "json",
+      "max_size": "10M",
+      "retain": 30
+    }
+  ]
+}
