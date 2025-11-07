@@ -9,15 +9,37 @@ function joinPlainText(chunks?: NotionText[]) {
   return contents.length ? contents.join(" ") : undefined
 }
 
-function getText(props: NotionProps, key: string): string | undefined {
-  const p = props?.[key];
-  if (!p) return;
+function extractText(
+  prop: any,
+  type: "title" | "rich_text" | "phone_number"
+) {
+  switch (type) {
+    case "title":
+      return joinPlainText(prop?.title);
+    case "rich_text":
+      return joinPlainText(prop?.rich_text);
+    case "phone_number":
+      return typeof prop?.phone_number === "string"
+        ? prop.phone_number.trim()
+        : undefined;
+    default:
+      return undefined;
+  }
+}
 
-  if (p.is_updated) {
-    return joinPlainText(p.title) ?? joinPlainText(p.rich_text) ?? "";
+function getText(
+  props: Record<string, any>,
+  key: string,
+  type: "title" | "rich_text" | "phone_number"
+): string | undefined {
+  const prop = props?.[key];
+  if (!prop) return;
+
+  if (prop.is_updated) {
+    return extractText(prop, type) ?? "";
   }
 
-  return joinPlainText(p.title) ?? joinPlainText(p.rich_text);
+  return extractText(prop, type);
 }
 
 function parsePartialDate(str?: string): { day?: number; month?: number; year?: number } | undefined {
@@ -35,7 +57,10 @@ function collectIndexed<T extends Record<string, any>>(
   data: any,
   props: NotionProps,
   base: string,
-  suffixMap: Record<string, { outKey: keyof T; parse?: (raw?: string) => any }>
+  suffixMap: Record<string, {
+    outKey: keyof T;
+    notionType: "title" | "rich_text" | "phone_number"; parse?: (raw?: string) => any
+  }>
 ): T[] {
   const re = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+(\\d+)\\s+-\\s+(${Object.keys(suffixMap).map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})$`);
   const out: Record<number, T> = {};
@@ -48,7 +73,7 @@ function collectIndexed<T extends Record<string, any>>(
     const spec = suffixMap[suffix];
     if (!spec) continue;
 
-    const val = getText(props, key);
+    const val = getText(props, key, spec.notionType);
     if (val == null) continue;
 
     if (!out[idx]) out[idx] = {} as T;
@@ -66,15 +91,15 @@ export async function mapNotionToContactRecord(properties: any) {
   const dataDict: any = {}
 
   const dataName: any = {};
-  dataName.givenName = getText(properties, "First Name") ?? "";
+  dataName.givenName = getText(properties, "First Name", "title") ?? "";
   dataDict["First Name"] = dataName.givenName;
-  const middle = getText(properties, "Middle Name"); if (middle) { dataName.middleName = middle; dataDict["Middle Name"] = middle; }
-  const last = getText(properties, "Last Name"); if (last) { dataName.familyName = last; dataDict["Last Name"] = last; }
-  const pGiven = getText(properties, "Phonetic First Name"); if (pGiven) { dataName.phoneticGivenName = pGiven; dataDict["Phonetic First Name"] = pGiven; }
-  const pMid = getText(properties, "Phonetic Middle Name"); if (pMid) { dataName.phoneticMiddleName = pMid; dataDict["Phonetic Middle Name"] = pMid; }
-  const pLast = getText(properties, "Phonetic Last Name"); if (pLast) { dataName.phoneticFamilyName = pLast; dataDict["Phonetic Last Name"] = pLast; }
-  const prefix = getText(properties, "Name Prefix"); if (prefix) { dataName.honorificPrefix = prefix; dataDict["Name Prefix"] = prefix; }
-  const suffix = getText(properties, "Name Suffix"); if (suffix) { dataName.honorificSuffix = suffix; dataDict["Name Suffix"] = suffix; }
+  const middle = getText(properties, "Middle Name", "rich_text"); if (middle) { dataName.middleName = middle; dataDict["Middle Name"] = middle; }
+  const last = getText(properties, "Last Name", "rich_text"); if (last) { dataName.familyName = last; dataDict["Last Name"] = last; }
+  const pGiven = getText(properties, "Phonetic First Name", "rich_text"); if (pGiven) { dataName.phoneticGivenName = pGiven; dataDict["Phonetic First Name"] = pGiven; }
+  const pMid = getText(properties, "Phonetic Middle Name", "rich_text"); if (pMid) { dataName.phoneticMiddleName = pMid; dataDict["Phonetic Middle Name"] = pMid; }
+  const pLast = getText(properties, "Phonetic Last Name", "rich_text"); if (pLast) { dataName.phoneticFamilyName = pLast; dataDict["Phonetic Last Name"] = pLast; }
+  const prefix = getText(properties, "Name Prefix", "rich_text"); if (prefix) { dataName.honorificPrefix = prefix; dataDict["Name Prefix"] = prefix; }
+  const suffix = getText(properties, "Name Suffix", "rich_text"); if (suffix) { dataName.honorificSuffix = suffix; dataDict["Name Suffix"] = suffix; }
 
   const tagRels = properties?.["Tags"]?.relation ?? [];
   if (Array.isArray(tagRels) && tagRels.length) {
@@ -93,28 +118,28 @@ export async function mapNotionToContactRecord(properties: any) {
 
   requestBody.names = [dataName]
 
-  const nickname = getText(properties, "Nickname");
+  const nickname = getText(properties, "Nickname", "rich_text");
   if (nickname) { requestBody.nicknames = [{ value: nickname }]; dataDict["Nickname"] = nickname; }
 
   const org: any = {};
-  const orgName = getText(properties, "Organization Name"); if (orgName) { org.name = orgName; dataDict["Organization Name"] = orgName; }
-  const orgTitle = getText(properties, "Organization Title"); if (orgTitle) { org.title = orgTitle; dataDict["Organization Title"] = orgTitle; }
-  const orgDept = getText(properties, "Organization Department"); if (orgDept) { org.department = orgDept; dataDict["Organization Department"] = orgDept; }
+  const orgName = getText(properties, "Organization Name", "rich_text"); if (orgName) { org.name = orgName; dataDict["Organization Name"] = orgName; }
+  const orgTitle = getText(properties, "Organization Title", "rich_text"); if (orgTitle) { org.title = orgTitle; dataDict["Organization Title"] = orgTitle; }
+  const orgDept = getText(properties, "Organization Department", "rich_text"); if (orgDept) { org.department = orgDept; dataDict["Organization Department"] = orgDept; }
   if (Object.keys(org).length) requestBody.organizations = [org];
 
-  const birthdayStr = getText(properties, "Birthday");
+  const birthdayStr = getText(properties, "Birthday", "rich_text");
   const birthdayDate = parsePartialDate(birthdayStr);
   if (birthdayDate) { requestBody.birthdays = [{ date: birthdayDate }]; dataDict["Birthday"] = birthdayStr; }
 
-  const notes = getText(properties, "Notes");
+  const notes = getText(properties, "Notes", "rich_text");
   if (notes) { requestBody.biographies = [{ value: notes }]; dataDict["Notes"] = notes; }
 
   const emails = collectIndexed<{ formattedType?: string; value?: string }>(dataDict,
     properties,
     "E - mail",
     {
-      "Label": { outKey: "formattedType" },
-      "Value": { outKey: "value" },
+      "Label": { outKey: "formattedType", notionType: "rich_text" },
+      "Value": { outKey: "value", notionType: "rich_text" },
     }
   );
   if (emails.length) requestBody.emailAddresses = emails;
@@ -123,8 +148,8 @@ export async function mapNotionToContactRecord(properties: any) {
     properties,
     "Phone",
     {
-      "Label": { outKey: "formattedType" },
-      "Value": { outKey: "value" },
+      "Label": { outKey: "formattedType", notionType: "rich_text" },
+      "Value": { outKey: "value", notionType: "phone_number" },
     }
   );
   if (phones.length) requestBody.phoneNumbers = phones;
@@ -137,15 +162,15 @@ export async function mapNotionToContactRecord(properties: any) {
     properties,
     "Address",
     {
-      "Label": { outKey: "formattedType" },
-      "Formatted": { outKey: "formattedValue" },
-      "Street": { outKey: "streetAddress" },
-      "City": { outKey: "city" },
-      "PO Box": { outKey: "poBox" },
-      "Region": { outKey: "region" },
-      "Postal Code": { outKey: "postalCode" },
-      "Country": { outKey: "country" },
-      "Extended Address": { outKey: "extendedAddress" },
+      "Label": { outKey: "formattedType", notionType: "rich_text" },
+      "Formatted": { outKey: "formattedValue", notionType: "rich_text" },
+      "Street": { outKey: "streetAddress", notionType: "rich_text" },
+      "City": { outKey: "city", notionType: "rich_text" },
+      "PO Box": { outKey: "poBox", notionType: "rich_text" },
+      "Region": { outKey: "region", notionType: "rich_text" },
+      "Postal Code": { outKey: "postalCode", notionType: "rich_text" },
+      "Country": { outKey: "country", notionType: "rich_text" },
+      "Extended Address": { outKey: "extendedAddress", notionType: "rich_text" },
     }
   );
   if (addresses.length) requestBody.addresses = addresses;
@@ -154,8 +179,8 @@ export async function mapNotionToContactRecord(properties: any) {
     properties,
     "Relation",
     {
-      "Label": { outKey: "formattedType" },
-      "Value": { outKey: "person" },
+      "Label": { outKey: "formattedType", notionType: "rich_text" },
+      "Value": { outKey: "person", notionType: "rich_text" },
     }
   );
   if (relations.length) requestBody.relations = relations;
@@ -164,8 +189,8 @@ export async function mapNotionToContactRecord(properties: any) {
     properties,
     "Website",
     {
-      "Label": { outKey: "formattedType" },
-      "Value": { outKey: "value" },
+      "Label": { outKey: "formattedType", notionType: "rich_text" },
+      "Value": { outKey: "value", notionType: "rich_text" },
     }
   );
   if (urls.length) requestBody.urls = urls;
@@ -174,8 +199,8 @@ export async function mapNotionToContactRecord(properties: any) {
     properties,
     "Event",
     {
-      "Label": { outKey: "formattedType" },
-      "Value": { outKey: "date", parse: (raw) => parsePartialDate(raw) },
+      "Label": { outKey: "formattedType", notionType: "rich_text" },
+      "Value": { outKey: "date", notionType: "rich_text", parse: (raw) => parsePartialDate(raw) },
     }
   );
   if (events.length) requestBody.events = events;
@@ -184,13 +209,13 @@ export async function mapNotionToContactRecord(properties: any) {
     properties,
     "Custom Field",
     {
-      "Label": { outKey: "key" },
-      "Value": { outKey: "value" },
+      "Label": { outKey: "key", notionType: "rich_text" },
+      "Value": { outKey: "value", notionType: "rich_text" },
     }
   );
   if (userDefined.length) requestBody.userDefined = userDefined;
 
-  const photoStr = getText(properties, "Photo");
+  const photoStr = getText(properties, "Photo", "rich_text");
   if (photoStr) { dataDict["Photo"] = photoStr; }
 
   dataDict["Concat - Variável"] = Object.entries(dataDict)

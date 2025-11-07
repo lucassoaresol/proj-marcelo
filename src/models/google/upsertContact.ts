@@ -68,6 +68,16 @@ async function ensureRichTextProp(
   }
 }
 
+async function ensurePhoneProp(dataSourceId: string, propsCache: PropertiesCache, propName: string) {
+  if (!(propName in propsCache)) {
+    await notion.dataSources.update({
+      data_source_id: dataSourceId,
+      properties: { [propName]: { phone_number: {} } },
+    });
+    propsCache[propName] = { phone_number: {} };
+  }
+}
+
 async function setRichText(
   properties: any,
   dataSourceId: string,
@@ -79,6 +89,36 @@ async function setRichText(
   await ensureRichTextProp(dataSourceId, propsCache, propName);
 
   properties[propName] = { rich_text: splitByLastSemicolon(value, 2000).map(part => ({ text: { content: part } })) };
+}
+
+async function setPhone(
+  properties: any,
+  dataSourceId: string,
+  propsCache: PropertiesCache,
+  propName: string,
+  value?: string
+) {
+  if (!value) return;
+  await ensurePhoneProp(dataSourceId, propsCache, propName);
+  properties[propName] = { phone_number: value };
+}
+
+type NotionTextType = "title" | "rich_text" | "phone_number";
+
+async function setByType(
+  properties: any,
+  dataSourceId: string,
+  propsCache: PropertiesCache,
+  propName: string,
+  notionType: NotionTextType,
+  value?: string
+) {
+  switch (notionType) {
+    case "rich_text":
+      return setRichText(properties, dataSourceId, propsCache, propName, value);
+    case "phone_number":
+      return setPhone(properties, dataSourceId, propsCache, propName, value);
+  }
 }
 
 async function mapFields<
@@ -110,6 +150,12 @@ async function mapFields<
   }
 }
 
+type SuffixSpec<Suf extends string> = {
+  suffix: Suf;
+  notionType: NotionTextType;
+  format?: (raw: any) => string | undefined;
+};
+
 async function setIndexedFields<
   B extends string,
   T extends Record<string, any>,
@@ -117,7 +163,7 @@ async function setIndexedFields<
 >(
   items: T[] | undefined,
   base: B,
-  fieldMap: Record<keyof T & string, Suf>,
+  fieldMap: Record<keyof T & string, SuffixSpec<Suf>>,
   data: Partial<Record<IndexedKeys<B, Suf>, string>>,
   properties: any,
   dataSourceId: string,
@@ -127,15 +173,15 @@ async function setIndexedFields<
   let i = 1;
   for (const item of items) {
     for (const k in fieldMap) {
-      const suffix = fieldMap[k];
+      const spec = fieldMap[k];
       const raw = item?.[k];
       if (raw == null) continue;
 
-      const key = `${base} ${i} - ${suffix}` as IndexedKeys<B, Suf>;
-      const value = String(raw);
+      const key = `${base} ${i} - ${spec.suffix}` as const;
+      const value = spec.format ? spec.format(raw) : String(raw);
 
       data[key] = value;
-      await setRichText(properties, dataSourceId, propsCache, key, value);
+      await setByType(properties, dataSourceId, propsCache, key, spec.notionType, value);
     }
     i++;
   }
@@ -285,7 +331,7 @@ export async function upsertContact(contactData: IContactRecord) {
   await setIndexedFields(
     contactData.data?.emailAddresses,
     "E - mail",
-    { formattedType: "Label", value: "Value" } as const,
+    { formattedType: { suffix: "Label", notionType: "rich_text" }, value: { suffix: "Value", notionType: "rich_text" } } as const,
     data,
     properties,
     env.dataSourceContact,
@@ -295,7 +341,10 @@ export async function upsertContact(contactData: IContactRecord) {
   await setIndexedFields(
     contactData.data?.phoneNumbers,
     "Phone",
-    { formattedType: "Label", value: "Value" } as const,
+    {
+      formattedType: { suffix: "Label", notionType: "rich_text" },
+      value: { suffix: "Value", notionType: "phone_number" },
+    } as const,
     data,
     properties,
     env.dataSourceContact,
@@ -306,15 +355,15 @@ export async function upsertContact(contactData: IContactRecord) {
     contactData.data?.addresses,
     "Address",
     {
-      formattedType: "Label",
-      formattedValue: "Formatted",
-      streetAddress: "Street",
-      city: "City",
-      poBox: "PO Box",
-      region: "Region",
-      postalCode: "Postal Code",
-      country: "Country",
-      extendedAddress: "Extended Address",
+      formattedType: { suffix: "Label", notionType: "rich_text" },
+      formattedValue: { suffix: "Formatted", notionType: "rich_text" },
+      streetAddress: { suffix: "Street", notionType: "rich_text" },
+      city: { suffix: "City", notionType: "rich_text" },
+      poBox: { suffix: "PO Box", notionType: "rich_text" },
+      region: { suffix: "Region", notionType: "rich_text" },
+      postalCode: { suffix: "Postal Code", notionType: "rich_text" },
+      country: { suffix: "Country", notionType: "rich_text" },
+      extendedAddress: { suffix: "Extended Address", notionType: "rich_text" },
     } as const,
     data,
     properties,
@@ -326,9 +375,8 @@ export async function upsertContact(contactData: IContactRecord) {
     contactData.data?.relations,
     "Relation",
     {
-      formattedType: "Label",
-      person: "Value",
-
+      formattedType: { suffix: "Label", notionType: "rich_text" },
+      person: { suffix: "Value", notionType: "rich_text" },
     } as const,
     data,
     properties,
@@ -340,9 +388,8 @@ export async function upsertContact(contactData: IContactRecord) {
     contactData.data?.urls,
     "Website",
     {
-      formattedType: "Label",
-      value: "Value",
-
+      formattedType: { suffix: "Label", notionType: "rich_text" },
+      value: { suffix: "Value", notionType: "rich_text" },
     } as const,
     data,
     properties,
@@ -362,9 +409,8 @@ export async function upsertContact(contactData: IContactRecord) {
     contactData.data?.userDefined,
     "Custom Field",
     {
-      key: "Label",
-      value: "Value",
-
+      key: { suffix: "Label", notionType: "rich_text" },
+      value: { suffix: "Value", notionType: "rich_text" },
     } as const,
     data,
     properties,

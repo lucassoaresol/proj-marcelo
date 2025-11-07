@@ -1,6 +1,5 @@
 import "dotenv/config";
 import { z } from "zod";
-import { domain } from "zod/v4/core/regexes.cjs";
 
 const schema = z.object({
   port: z
