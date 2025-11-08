@@ -1,8 +1,10 @@
 import { Queue, Worker } from "bullmq";
 import { createContact } from "../../models/notion/createContact";
+import { createTag } from "../../models/notion/createTag";
 import { excludeContact } from "../../models/notion/excludeContact";
-import { createTag, excludeTag, updateTag } from "../../models/notion/tag";
+import { excludeTag } from "../../models/notion/excludeTag";
 import { updateContact } from "../../models/notion/updateContact";
+import { updateTag } from "../../models/notion/updateTag";
 
 export const createNotionTagQueue = new Queue<string>("create-notion-tag", {
   connection: {},
