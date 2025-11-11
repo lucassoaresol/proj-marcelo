@@ -12,6 +12,8 @@ const schema = z.object({
   dataSourceTag: z.uuid(),
   adminEmailGoogle: z.email(),
   domainGoogle: z.string(),
+  smtpUser: z.email(),
+  smtpPass: z.string(),
 });
 
 export const env = schema.parse({
@@ -22,4 +24,6 @@ export const env = schema.parse({
   dataSourceTag: process.env.DATA_SOURCE_TAG,
   adminEmailGoogle: process.env.ADMIN_EMAIL_GOOGLE,
   domainGoogle: process.env.DOMAIN_GOOGLE,
+  smtpUser: process.env.SMTP_USER,
+  smtpPass: process.env.SMTP_PASS,
 });

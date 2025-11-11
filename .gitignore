@@ -3,5 +3,6 @@ dist
 *lock*
 .env
 logs
+public
 pg-utils.json
 service-account.json
